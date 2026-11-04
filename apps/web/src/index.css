@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* 出处：.impeccable/surfaces/web-src-routes-save.md OWN-WORLD */
+@theme {
+  --color-brand: #ff5b23;
+  --color-surface: #f2f3f5;
+  --color-ink: #221a17;
+  --radius-card: 16px;
+  --radius-chip: 12px;
+  --text-price: 34px;
+}
+
+html,
+body,
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}

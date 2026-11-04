@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 11.13 用 allowBuilds 取代 onlyBuiltDependencies
+allowBuilds:
+  "@biomejs/biome": true
+  "@scarf/scarf": false
+  "@swc/core": true
+  better-sqlite3: true
+  esbuild: true

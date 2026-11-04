@@ -24,13 +24,13 @@
 ## 2. 总体架构
 
 ```
-guard-work/                        pnpm workspace 根
+仓库根                         pnpm workspace 根
 ├── apps/
-│   ├── admin/                     NestJS 后端（@guard-work/admin）
-│   └── web/                       React 前端（@guard-work/web）
+│   ├── admin/                     NestJS 后端（@flypig/admin）
+│   └── web/                       React 前端（@flypig/web）
 ├── packages/
-│   ├── logger/                    @guard-work/logger：pino 封装 + traceId
-│   ├── shared/                    @guard-work/shared：前后端同源类型与纯函数
+│   ├── logger/                    @flypig/logger：pino 封装 + traceId
+│   ├── shared/                    @flypig/shared：前后端同源类型与纯函数
 │   └── typescript-config/         共享 tsconfig 基座
 ├── biome.json                     lint / format（根级）
 ├── pnpm-workspace.yaml
@@ -44,7 +44,7 @@ guard-work/                        pnpm workspace 根
 | 后端框架 | NestJS 12 + Express 5 | DI/模块化成熟，与 Swagger/Config 等生态契合；v12 生态包（@nestjs/typeorm/config/swagger/testing）已全线发 12.x |
 | 数据库（初期） | TypeORM 1.x + SQLite（better-sqlite3） | 零外部依赖、文件型库，clone 即跑；换驱动即可迁 PG |
 | 前端 | Vite 8 + React 19 + react-router 8 + Tailwind 4 + shadcn/ui(Radix) | Vite 8 默认 Rolldown 构建；RR8 要求 Vite ≥7 + React 19，与 Vite 8 捆绑升级 |
-| 日志 | pino 10（自封装 @guard-work/logger） | JSONL、高性能、mixin 注入 traceId |
+| 日志 | pino 10（自封装 @flypig/logger） | JSONL、高性能、mixin 注入 traceId |
 | 测试 | Vitest 5（全仓单一框架） | 前后端同构共用一套 runner/配置/coverage；peer 兼容 Vite 6.4~8，与 NestJS 12 官方默认方向一致 |
 | Lint/Format | Biome 2.5 | 单工具替代 ESLint + Prettier |
 
@@ -58,9 +58,9 @@ guard-work/                        pnpm workspace 根
 - 根 `package.json` scripts（全部 `pnpm -r` 递归）：
   - `build` / `typecheck` / `test`：递归执行各包同名脚本；
   - `lint` / `lint:fix`：`biome check .`；
-  - `dev:admin`：先构建 `@guard-work/logger` 再 `nest start --watch`（admin 运行时依赖 logger 产物）；
+  - `dev:admin`：先构建 `@flypig/logger` 再 `nest start --watch`（admin 运行时依赖 logger 产物）；
   - `dev:web`：`vite` dev server。
-- 约束：Node >= 22.12（Vitest 5 engines 硬性要求，且 Node 20 已 EOL），`packageManager: pnpm@12.x`（Rust 原生实现，命令/lockfile 格式与 11 兼容；CI 安装走 `npx get-pnpm` 或 corepack 固定版本）。
+- 约束：Node >= 22.12（Vitest 5 engines 硬性要求，且 Node 20 已 EOL），`packageManager: pnpm@11.13.0`（本机实测版本，2026-11-04 由 12.x 下调；锁定版本随 `packageManager` 字段走）。
 
 ### 3.2 共享 TypeScript 配置（packages/typescript-config）
 
@@ -78,13 +78,13 @@ guard-work/                        pnpm workspace 根
 - linter：`recommended` preset；`organizeImports` 开启；
 - CSS 支持 `tailwindDirectives`；
 - 忽略 dist/node_modules/logs 等产物目录；
-- 注：`apps/admin` 目前排除在 biome 范围外（历史迁移遗留，新代码遵循同一风格）。
+- 注：本仓库无历史迁移包袱，`apps/admin` 一并纳入 biome 范围（2026-11-04 修订，替换原「admin 排除」的遗留约定）。
 
 ---
 
 ## 4. 公共包
 
-### 4.1 @guard-work/logger（packages/logger）
+### 4.1 @flypig/logger（packages/logger）
 
 职责：全仓统一日志出口。pino 薄封装，产出 JSONL。
 
@@ -110,15 +110,15 @@ guard-work/                        pnpm workspace 根
 
 **构建**：tsup 双产物（cjs `dist/index.js` + esm `dist/index.mjs` + d.ts），exports 条件导出（ESM/CJS 消费方各走对应 condition，pino 10 双格式兼容）。测试用 vitest，与全仓统一。
 
-### 4.2 @guard-work/shared（packages/shared）
+### 4.2 @flypig/shared（packages/shared）
 
-职责：前后端同源的契约与纯逻辑，消费方一律 `import ... from "@guard-work/shared"`。
+职责：前后端同源的契约与纯逻辑，消费方一律 `import ... from "@flypig/shared"`。
 
 - `src/api/common.ts`：分页与响应契约（`ApiResponse`/`PageQuery`/`PageResult`）；
 - `src/index.ts` 为唯一入口，新增目录后在此补一行 re-export；
 - 构建同为 tsup 双产物；测试用 vitest（原 jest 已移除，见 §5.7 全仓统一决策）。
 
-### 4.3 @guard-work/typescript-config
+### 4.3 @flypig/typescript-config
 
 纯配置文件包（`base.json`），见 §3.2，仅作为 devDependency 被 extends。
 
@@ -164,7 +164,7 @@ configure(): TraceMiddleware 应用 forRoutes("*")
 
 ### 5.4 数据库接入（初期 SQLite）
 
-- 选型：TypeORM 1.x + `better-sqlite3` 驱动（当前 13.x），数据库文件默认 `data/guard_work.sqlite`（gitignore）；
+- 选型：TypeORM 1.x + `better-sqlite3` 驱动（当前 13.x），数据库文件默认 `data/flypig.sqlite`（gitignore）；
 - 初期策略：`synchronize: true`，改实体即自动同步表结构，提升迭代效率；结构稳定后切 `synchronize: false` + migration 管理；
 - `autoLoadEntities: true`，实体随业务模块 `forFeature` 注册，DatabaseModule 不感知具体实体；
 - 命名空间配置 `db`（`registerAs`）：`DB_PATH` 可选，缺省用默认路径；
@@ -220,11 +220,12 @@ configure(): TraceMiddleware 应用 forRoutes("*")
 
 ```
 main.tsx
-└── StrictMode → BrowserRouter → AuthProvider → App
-                                                └── useRoutes(routes)   路由表驱动
+└── StrictMode → BrowserRouter → App
+                                    └── useRoutes(routes)   路由表驱动
 ```
 
-- 路由集中在 `src/routes.tsx`（RouteObject 数组），登录/注册为公开路由，其余挂在 `RequireAuth` + `AppLayout` 之下，`*` → NotFound；
+- 路由集中在 `src/routes.tsx`（RouteObject 数组），`*` → NotFound；
+- **无用户体系**：不设 AuthProvider / RequireAuth / 登录注册页（2026-11-04 修订，产品无账号，页面标注即可）；
 - UI 基座：shadcn/ui 风格组件位于 `src/components/ui`，工具函数 `src/lib/utils.ts`（cn 合并）。
 
 ### 6.3 统一请求层（lib/api.ts）
@@ -232,9 +233,9 @@ main.tsx
 `apiFetch<T>(path, options)` 是全前端唯一请求出口：
 
 - 自动补 `/api` 前缀；body 存在时加 `content-type: application/json`；
-- 有 token 自动带 `Authorization: Bearer <token>`（token 存 localStorage，key `gw_token`，见 `lib/token.ts`）；
+- 无 token 逻辑（2026-11-04 修订：产品无登录）；
 - **traceId 对接**：从响应头读 `x-trace-id`，错误归一为 `ApiError { message, traceId, status }`，便于前端上报排障；
-- 401 处理：清 token 并跳 `/login`（登录/注册页除外，避免循环）；
+- 401 处理：与其它状态码一样归一为 `ApiError` 抛出，不跳转（2026-11-04 修订：无登录页）；
 - 错误消息解析：优先取后端 `body.message`（字符串或字符串数组 join）；
 - 空响应处理：204 或 200 空 body 一律按 `undefined` 返回（先 `text()` 再判空 parse，避免 `json()` 对空体抛 SyntaxError 误判成功操作为失败）；
 - 网络层失败统一抛「后端服务不可达」提示。
@@ -245,7 +246,7 @@ main.tsx
 
 所有开发的功能都需要有合理的日志输出，方便排查问题，统一遵守：
 
-1. 一律走 `AppLoggerService`（admin）或 `@guard-work/logger`（包/脚本），禁止裸 `console.log`（启动前极早期错误除外）；
+1. 一律走 `AppLoggerService`（admin）或 `@flypig/logger`（包/脚本），禁止裸 `console.log`（启动前极早期错误除外）；
 2. 结构化优先：业务日志用 `info/errorWithFields/warnWithFields` 传字段，字段原样落 JSONL；
 3. 关键生命周期必打日志：启动装配完成、依赖连接就绪/异常、异常过滤命中；
 4. 每条请求链路日志自动携带 traceId（mixin），无需手工传；
@@ -262,11 +263,11 @@ main.tsx
 | 1 | monorepo 脚本贯通 | 根目录 `pnpm build` / `pnpm typecheck` / `pnpm lint` / `pnpm test` 全绿，且 `pnpm why vitest` 各包可达、lockfile 中无 jest/ts-jest 残留 |
 | 2 | env fail-fast | 删除 `.env` 中必填项启动，进程立刻退出并报错 |
 | 3 | 骨架探针 | `GET /api/health` → 200 `{ status: "ok" }` |
-| 4 | SQLite 接入 | 空环境启动成功，`data/guard_work.sqlite` 自动创建，数据可写入并读回 |
+| 4 | SQLite 接入 | 空环境启动成功，`data/flypig.sqlite` 自动创建，数据可写入并读回 |
 | 5 | traceId 全链路 | 任意请求响应头含 `x-trace-id`；`logs/admin.log` 中该请求相关日志带同一 traceId |
 | 6 | 统一错误结构 | 触发 4xx/5xx，响应体为 `{ statusCode, message, error, path, timestamp }` |
 | 7 | Swagger | `/api/docs` 可访问，标题/版本与 package.json 一致 |
-| 8 | 前端连通 | `pnpm dev:web` 打开 5173，经 /api 代理完成一次请求；401 自动跳登录 |
+| 8 | 前端连通 | `pnpm dev:web` 打开 5173，首页经 /api 代理取到 `/api/health` 数据（2026-11-04 修订，原「401 自动跳登录」随登录壳删除） |
 | 9 | 优雅关闭 | Ctrl+C 后进程正常退出，不挂起 |
 
 ---

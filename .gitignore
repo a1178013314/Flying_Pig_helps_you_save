@@ -36,3 +36,5 @@ coverage/
 
 # Project-specific
 docs/静态文档.md
+secrets.env
+data/
