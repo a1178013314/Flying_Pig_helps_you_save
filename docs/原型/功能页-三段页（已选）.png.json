@@ -1,0 +1,7 @@
+{
+  "origin": "rendered, not generated: screenshot of docs/原型/功能页-三段页（已选）.html at 390x844 (DPR 2) via chrome-headless-shell",
+  "prompt": "飞猪帮你省 功能首页 · 三段页。移动 H5 390x844。同一套飞猪橙 + 白卡。顶部省心/省钱/省时间分段控件（省心带未处理红点），省钱页单张大卡：MU5101 ¥468 现价、目标 ¥420、还差 ¥48、4 天价格曲线与目标虚线（价格必须在曲线下方才达标）、推送时机 chips（降价就推 / 每天 9:00）、其他监听、推送记录。签名动作：目标价虚线把「还差多少」变成几何距离。数据为编造示例，标注「示例数据 + 一键更新」。",
+  "surface": "feature-pages-first-screen",
+  "frame": "390x844",
+  "syntheticData": true
+}
