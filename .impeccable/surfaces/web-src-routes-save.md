@@ -41,6 +41,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 ## Unresolved
 
+> 2026-11-04：以下三条与 tab 合并问题已在 `docs/specs/2026-11-04-入口页与三段页-design.md` 定案（入口页只开 banner + 机票两个口、/save 自带头与底按钮区不挂 tab、一键更新全刷、省心输入为可叠加 chip + textarea）。以该 spec 为准，本节仅留档。
+
 - 三段与入口页底部 tab 怎么对齐（入口页复刻完成后再定）；
 - 省心段的「情况输入」是单 chip 还是可组合（带娃 + 生病）；
 - 一键更新是三段全刷还是只刷当前段。

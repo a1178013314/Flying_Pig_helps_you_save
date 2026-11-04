@@ -46,7 +46,10 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const text = await response.text();
 
   if (!response.ok) {
-    throw new ApiError(messageFrom(text, response.statusText), response.status, traceId);
+    // 5xx 且 body 不是后端的 JSON 错误体 = 代理连不上后端，说成人话
+    const fallback =
+      response.status >= 500 ? "后端服务不可达，请确认 admin 已启动" : response.statusText;
+    throw new ApiError(messageFrom(text, fallback), response.status, traceId);
   }
   // 204 或空 body 一律视为 undefined，避免 json() 对空体抛错
   if (text.length === 0) return undefined as T;

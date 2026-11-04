@@ -31,7 +31,6 @@ const ARTIFACT: Record<JobType, GateKind> = {
 
 export interface DaysResult {
   days: Dataset["watch"]["series"];
-  jobId?: string;
 }
 
 type Task =
@@ -84,7 +83,7 @@ export class JobsService implements OnModuleInit {
     return job;
   }
 
-  /** 省时间段不进快照：命中缓存不起任务，没数据时起一次刷新（spec §3） */
+  /** 省时间段不进快照：命中缓存不起任务；航线不匹配只回空，换航线由前端自己走 discover→watch→refresh */
   async cheapestDays(origin: string, destination: string): Promise<DaysResult> {
     const key = `${origin}>${destination}`;
     const hit = this.dayCache.get(key);
@@ -95,7 +94,7 @@ export class JobsService implements OnModuleInit {
       dataset.watch.origin === origin &&
       dataset.watch.destination === destination &&
       dataset.watch.series.length > 0;
-    if (!matched) return { days: [], jobId: this.refresh().id };
+    if (!matched) return { days: [] };
 
     const days = dataset.watch.series;
     this.dayCache.set(key, { days, at: Date.now() });

@@ -341,13 +341,13 @@ describe("数据管道", () => {
     expect(runner.calls).toBe(calls);
   });
 
-  it("cheapest-days 没有该航线数据时后台起刷新并回空", async () => {
+  it("cheapest-days 没有该航线数据时只回空 days，不再交一个补不出数据的 jobId", async () => {
     const res = await request(app.getHttpServer())
       .get("/api/cheapest-days?origin=上海&destination=广州")
       .expect(200);
     const body = res.body as { days: unknown[]; jobId?: string };
     expect(body.days).toEqual([]);
-    expect(body.jobId).toBeTypeOf("string");
+    expect(body.jobId).toBeUndefined();
   });
 });
 

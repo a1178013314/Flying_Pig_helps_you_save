@@ -1,41 +1,37 @@
 # 账本
 
-更新时间：2026-11-04 ｜ 当前阶段：数据管道已交付（S0 前置准备完成）｜ 一句话现状：管道代码按 spec v5 落地并跑通真实链路，深度思考已关（discover 50s→21s），95 tests 全绿；卡点是 refresh 属 I/O bound 压不到 200s 以内、replan 真实单轮跑不完，且三段页与入口页仍不存在。
+更新时间：2026-11-04 ｜ 当前阶段：批次 A 已交付，批次 B 待开 ｜ 一句话现状：入口页与三段页两页落地并通过 spec §10 八条验收（真实 discover/refresh/replan 各跑通一次），数据管道 131 tests 全绿；卡点仍是 refresh 单轮约 200s 与 replan 常超单轮，留给批次 B。
 
-> 注：规则引用的总纲（§5/§7/§8）尚未入库，本账本暂以 `.qoder/spec/initial-framework-scaffolding-spec.md`、`docs/specs/2026-11-04-初始架构-design.md`、`docs/specs/2026-11-04-数据管道-design.md` 与 `docs/需求.md` 为口径来源，待总纲入库后改为引用。
+> 注：规则引用的总纲（§5/§7/§8）尚未入库，本账本暂以 `.qoder/spec/initial-framework-scaffolding-spec.md`、`docs/specs/2026-11-04-初始架构-design.md`、`docs/specs/2026-11-04-数据管道-design.md`、`docs/specs/2026-11-04-入口页与三段页-design.md` 与 `docs/需求.md` 为口径来源，待总纲入库后改为引用。
 
 ## 本次做什么
 
 | 项 | 状态 | 完成标准 |
 |---|---|---|
-| 按 spec v4 用 TDD 实现数据管道（契约守卫 / 三道闸门 / 执行器 / 状态机 / 快照与接口 / 验证面板） | 已完成 | spec §10 七条验收逐条有验证记录；根目录 `pnpm test` / `pnpm typecheck` / `pnpm lint` 全绿 |
-| 把实测校正回写 spec（v4 → v5） | 已完成 | §0.3 实测表、决策 7 超时、§2 `input.json`、§3 `notes` 与 cheapest-days、§4 入参、§5 四条实测修正、§8 落点、§9 测试数、§10 验收表、§12 风险，全部与代码一致，无「待实测」项 |
-| replan 真实链路单独验收 | 阻塞 | 一次真实 replan 在单轮超时内 done，且 `candidates` ≤3 条真实班次；否则按类型放宽超时并回写 spec |
+| 按批次 A 的 spec 实现两页（入口页 + 三段页） | 已完成 | spec §10 八条验收逐条有实测记录（已写进该 spec §13） |
+| 后端唯一改动：`cheapestDays` 航线不匹配只回空 days | 已完成 | e2e 断言 `jobId` 为 undefined，`DaysResult` 只剩 `days`；`pnpm test` 全绿 |
+| 交付物同步回文档 | 已完成 | `docs/DESIGN.md` 记 token/组件约定/21 个资产的裁切坐标与三处取舍；两份 spec 按实测改写（轴标「出发」、`{ days: [] }`、§13 验收记录） |
 
 ## 已完成
 
 | 项 | 状态 | 落地位置 | 验证方式 |
 |---|---|---|---|
-| 数据契约与手写守卫（前后端同源，不引 zod） | 已完成 | `packages/shared/src/dataset.ts`、`packages/shared/src/dataset.test.ts` | 18 tests：`parseDataset` 拒缺 `meta` / `series` 非数组 / `price` 为字符串，错误带字段路径；`parseOffers` / `parsePlan`（候选 >3 拒）/ `isNeedQuestion` 覆盖 |
-| 三道闸门（结构 / 完整 / 有据） | 已完成 | `apps/admin/src/modules/agent/agent.gate.ts`、`apps/admin/test/fixtures/{raw/flight.json,raw/flight-live.json,offers.from-raw.json}` | 14 tests，fixture 用 2026-11-04 真实录制的 flyai stdout：价格改 `1` → 「有 1 个价格在原始输出里找不到」；缺 11-08 → 写明缺哪天；host 非 `router.feizhu.com` → 拒；raw 为空 → 全拒；`meta.updated_at` / `mode` 后端覆盖（真实 raw 含「体验模式」→ trial，另一份 fixture → live） |
-| AgentRunner 接缝 + opencode 执行器 | 已完成 | `apps/admin/src/modules/agent/{agent.runner.ts,opencode.runner.ts,agent.tokens.ts}` | 12 tests：执行目录形状（`raw/`、只读 skill 副本、`opencode.json` 的 model 与 permission、`input.json`）、skill hash 篡改可检出、成功即删 / 失败保留、7 天清理、PATH 里 `flyai` 可执行、缺 `BAILIAN_API_KEY` 直接给失败原因；`RUN_TIMEOUT_MS = 300_000` 由测试锁住 |
-| 三类任务提示词 | 已完成 | `apps/admin/src/modules/agent/prompts/{common,discover,refresh,replan}.ts` | 12 tests：公共纪律（raw / 不许编造 / 反问出口）、refresh 写明 5 天逐天各查一次、重试带上轮失败原因、只给班次号时标注「未提供」并要求交 `need` |
-| job 状态机与管道编排 | 已完成 | `apps/admin/src/modules/jobs/{job.registry.ts,jobs.service.ts}` | 9 + 17 tests：同类型在跑复用 jobId、终态后是新 job、不交产物重试一轮、闸门拒或 runner 抛错时旧快照不动、skill 被改写判失败、成功即删执行目录 |
-| 快照存储与 6 条接口 | 已完成 | `apps/admin/src/modules/dataset/{dataset.entity.ts,dataset.service.ts,dataset.controller.ts,dataset.seed.ts}`、`apps/admin/src/modules/jobs/jobs.controller.ts` | e2e：空库 `GET /api/dataset` 回种子；`POST /api/dataset/refresh|discover|replan` 202 + jobId；`POST /api/watch` 200 只写骨架；`GET /api/cheapest-days` 命中缓存不起任务；`GET /api/jobs/:id`；replan 情况超 200 字 → 400 |
-| 关掉深度思考（模型级 `options.enable_thinking: false`） | 已完成 | `apps/admin/src/modules/agent/opencode.runner.ts` 的 `buildOpencodeConfig()` | 实测同一提示词 reasoning 33→0 token、2448ms→1145ms；真实 discover 50s→21s；refresh 175s→208s（I/O bound，未变快）；由测试锁住配置字段 | discover 约 50s 出 10 条真实班次并过闸门；refresh 单轮 175s 出 5 天逐天真最低价（450/350/260/250/220）+ `push_log` 5 条 + `notes` 自陈放弃打码火车价；只给 `MU5101` 7s 回 `need` 反问；阶段文案在 11-06/11-07/11-08/11-10 间跳 |
-| 临时验证面板 | 已完成 | `apps/web/src/pages/home.tsx` | 浏览器打开 `localhost:5173/`：显示来源（体验模式标注）、示例数据标记、盯的班次、更新时间、5 天价格、discover 表单（含「班次号（可只填这个）」）、replan 输入框 |
-| flyai 作为仓库依赖落地 | 已完成 | `apps/admin/package.json`（`@fly-ai/flyai-cli@1.0.16`）、`pnpm-lock.yaml` | `apps/admin/node_modules/.bin/flyai --help` 可执行；真实 job 由 `agentEnv()` 前置该目录后取到真价 |
-| 装配与测试基建调整 | 已完成 | `apps/admin/src/app.bootstrap.ts`（抽出 `configureApp`）、`apps/admin/src/app.module.ts`、`apps/admin/vitest.config.mts` 未改、`biome.json`（`unsafeParameterDecoratorsEnabled` + 排除 `test/fixtures` 与 `.opencode`） | `pnpm build` 4 包 Done；`pnpm typecheck` 6 包 Done；`pnpm lint` 78 files 0 诊断；`pnpm test` 95 tests 全绿（shared 18 / admin 70 / web 4 / logger 3） |
-| 官方 flyai skill 入库 | 已完成 | `.opencode/skills/flyai/SKILL.md`（逐字节复制，MIT） | 真实 job 里 agent 加载该 skill 并靠 `flyai --help` 自探参数跑通；正文是 flyai-cli 仓库 README，无参数表（已记进 spec §5 与 §12） |
-| spec v5 与术语表同步 | 已完成 | `docs/specs/2026-11-04-数据管道-design.md`、`CONTEXT.md` | spec 242 行、12 节与代码一致；§10 验收表逐条标注验证方式；术语表新增「任务输入」并改写「执行目录」「刷新任务」 |
+| 入口页（结构级原样 10 板块） | 已完成 | `apps/web/src/pages/entry/index.tsx`、`apps/web/src/pages/entry/seed.ts`、`apps/web/src/assets/home/*.png`（21 张） | 390×844 截图逐板块比对：类目 10 项、券 5 张、底 tab 5 项齐全，首屏露到新人专区；只有「机票」与三功能卡可点，其余 `div` 纯视觉 |
+| 三段页外壳与三段内容 | 已完成 | `apps/web/src/pages/save/{index,money,heart,time}.tsx`、`apps/web/src/components/source-tag.tsx` | 浏览器实测：省钱段真实跑通 discover→盯这条→watch→一键更新→5 天曲线与 ¥490；省心段单轮出 summary + 3 条候选；省时间段同航线出 5 天并高亮最便宜那天 |
+| 前端共享纯函数 | 已完成 | `apps/web/src/lib/{job,target,days,format}.ts` + 同名 `.test.ts` | 36 tests：`pollJob` 620s 上限与超时文案、目标价脏值当未设、推送偏好白名单丢弃、最便宜那天与结论句、曲线几何（同价不 NaN、目标价进定义域）、换航线前置校验、时间文案 |
+| 路由与 390 壳 | 已完成 | `apps/web/src/routes.tsx`、`apps/web/src/App.tsx`、`apps/web/src/index.css`（补 3 个 token） | `?seg=money/heart/time` 三条入口与返回箭头实测；`?seg=xx` 回落省钱段；`main` 上限 390px |
+| 代理 5xx 归到「后端服务不可达」 | 已完成 | `apps/web/src/lib/api.ts`、`apps/web/src/lib/api.test.ts` | 先写失败测试（实测只回 `Bad Gateway`）再改；把 web 代理指向死端口后三段页错误行显示「后端服务不可达，请确认 admin 已启动」，两页都不白屏 |
+| 后端 `cheapestDays` 不匹配分支 | 已完成 | `apps/admin/src/modules/jobs/jobs.service.ts`、`apps/admin/test/pipeline.e2e.spec.ts` | e2e 17 tests 全绿，断言 `{ days: [] }` 且无 `jobId` |
+| 临时验证面板退役 | 已完成 | 删除 `apps/web/src/pages/home.tsx` | `pnpm build` 4 包 Done，无残留引用 |
+| 设计与资产口径入库 | 已完成 | `docs/DESIGN.md` | 21 个资产逐条带裁切坐标与出处；三处取舍（机票卡背景改 CSS、`rent-cat` 角标随图标裁入、banner 高度按内容）写明理由 |
+| spec 同步 | 已完成 | `docs/specs/2026-11-04-入口页与三段页-design.md`（§5/§8/§9/§11/新增 §13）、`docs/specs/2026-11-04-数据管道-design.md`（§3 两处口径） | 轴标改「出发」、`{ days: [] }` 不起任务、四组纯函数测试与 `lib/format.ts` 进清单、§13 八条验收逐条有实测结论 |
+| 装配与测试基建 | 已完成 | 根 `package.json` 四条命令 | `pnpm test` 131 tests（shared 18 / admin 70 / web 40 / logger 3）；`pnpm typecheck` 6 包 Done；`pnpm lint` 92 files 0 诊断；`pnpm build` 4 包 Done |
 
 ## 接下来做什么
 
-1. 【阻塞项：无｜归属：/save 三段页】按 `.impeccable/surfaces/web-src-routes-save.md` 与 `docs/原型/功能页-三段页（已选）.png` 实现三段页：省钱/省心走 `GET /api/dataset`，省时间走 `GET /api/cheapest-days`，用户设定存 localStorage。数据源与接口已就绪，曲线是未来 5 天（无历史价数据源），原型的 4 天历史轴需调整。
-2. 【阻塞项：无｜归属：数据管道】replan 按类型给超时或压缩查询次数：实测 replan 单轮 >300s 触发强杀重试。完成标准：一次真实 replan 在单轮内 done 且候选 ≤3 条。
-3. 【阻塞项：无｜归属：数据管道】refresh 提速（瓶颈已量清：flyai 单次 0.6s、每轮模型往返 1.4s 且重发 ~10k token，200s 全花在轮次上）。按性价比做三件事：提示词给死命令模板把 5 天压进一次并发 shell、SKILL.md 瘦身去掉对 agent 无用的 README 段落、后端按 `(航线, 日期)` 缓存当天最低价只补缺失天。完成标准：真实 refresh 稳定进 120s 内，且闸门与 raw 佐证仍全过。
-3. 【阻塞项：无｜归属：口径】`BAILIAN_API_KEY` 的正式注入方式：当前是我从 `~/.bailian/config.json` 临时传给进程环境，未写进 `apps/admin/.env`（该文件已 gitignore）。完成标准：部署 spec 里写明 key 来源与缺失时的行为（直接 failed，不重试）。
-4. 【阻塞项：无｜归属：口径】注入 `FLYAI_API_KEY` 后重跑酒店/门票/火车，确认打码是否消失。当前体验模式下 replan 的火车候选必然为空（agent 已在 `notes` 里交代）。
-5. 【阻塞项：无｜归属：入口页】入口页原样还原（视觉事实源 `docs/入口页面，这个要原样实现.jpg`），替换临时验证面板。
-6. 【阻塞项：无｜归属：部署】在 ECS 上装并验证 `flyai` 与 `opencode`（两者都能出结果），否则线上刷新与重规划必然 failed。
-7. 【阻塞项：总纲入库｜归属：口径】补建总纲与 §5 口径表，把账本引用的 D1–D4 / S0–S6 / R1–R13 编号对齐。
+1. 【阻塞项：无｜归属：批次 B】把 replan 预算与 refresh 提速、`BAILIAN_API_KEY` / `FLYAI_API_KEY` 口径合成一个 spec：replan 按类型给超时或压查询次数，refresh 走命令模板 + 缓存。完成标准：一次真实 replan 单轮内 done 且候选 ≤3 条；真实 refresh 稳定进 120s 内且闸门全过。
+2. 【阻塞项：批次 B 的口径落定｜归属：批次 D】补建总纲与 §5 口径表，把账本引用的 D1–D4 / S0–S6 / R1–R13 编号对齐；与批次 B 的 spec 一并产出。
+3. 【阻塞项：批次 A 通过验收（已过）｜归属：批次 C】ECS 上装并验证 `flyai` 与 `opencode`，跑通线上刷新与重规划。完成标准：线上两页各跑通一次真实任务。
+4. 【阻塞项：批次 B｜归属：批次 A 的遗留】被打断行程只能在省心段那句话里改，界面没有结构化入口（spec §12 未定项）；批次 B 若动 replan 入参一并解决。
+5. 【阻塞项：无｜归属：批次 A 的遗留】被盯航线始终只有一条（快照只有一份 watch），原型「正在盯 2 个航班」落不了地；多航线是否要做，按演示效果再定。
+6. 【阻塞项：多端同步需求出现时｜归属：批次 A 的遗留】目标价只存 `localStorage`（`flypig:target:<班次>`），后端 `watch.target_price` 恒 0；挪回后端要改契约（spec 决策 11 的 shortcut）。

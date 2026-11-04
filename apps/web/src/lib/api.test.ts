@@ -46,4 +46,19 @@ describe("apiFetch", () => {
     const error = await apiFetch("/health").catch((e: unknown) => e);
     expect((error as ApiError).message).toContain("不可达");
   });
+
+  it("代理转发的 5xx 空体（后端没起）也说成后端不可达", async () => {
+    mockFetch(new Response("Bad Gateway", { status: 502, statusText: "Bad Gateway" }));
+    const error = await apiFetch("/dataset").catch((e: unknown) => e);
+    expect((error as ApiError).message).toContain("后端服务不可达");
+    expect((error as ApiError).status).toBe(502);
+  });
+
+  it("后端自己回的 500 仍然照原话显示，不冒充连不上", async () => {
+    mockFetch(
+      new Response(JSON.stringify({ message: "闸门拒了" }), { status: 500, statusText: "Oops" }),
+    );
+    const error = await apiFetch("/dataset").catch((e: unknown) => e);
+    expect((error as ApiError).message).toBe("闸门拒了");
+  });
 });

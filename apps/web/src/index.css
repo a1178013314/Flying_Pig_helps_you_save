@@ -3,7 +3,10 @@
 /* 出处：.impeccable/surfaces/web-src-routes-save.md OWN-WORLD */
 @theme {
   --color-brand: #ff5b23;
+  --color-brand-deep: #ff4e00;
+  --color-brand-soft: #ffede3;
   --color-surface: #f2f3f5;
+  --color-surface-sunken: #f2f3f5;
   --color-ink: #221a17;
   --radius-card: 16px;
   --radius-chip: 12px;
