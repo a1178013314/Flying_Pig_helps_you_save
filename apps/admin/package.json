@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fly-ai/flyai-cli": "^1.0.16",
     "@flypig/logger": "workspace:*",
     "@flypig/shared": "workspace:*",
     "@nestjs/common": "^12.3.2",

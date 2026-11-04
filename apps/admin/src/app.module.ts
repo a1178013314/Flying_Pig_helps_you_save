@@ -6,6 +6,7 @@ import { envValidationSchema } from "./infra/config/env.validation";
 import { DatabaseModule } from "./infra/database/database.module";
 import { TraceMiddleware } from "./infra/http/trace.middleware";
 import { LoggerModule } from "./infra/logger/logger.module";
+import { JobsModule } from "./modules/jobs/jobs.module";
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { LoggerModule } from "./infra/logger/logger.module";
     }),
     LoggerModule,
     DatabaseModule,
+    JobsModule,
   ],
   controllers: [AppController],
 })

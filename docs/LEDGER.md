@@ -1,31 +1,40 @@
 # 账本
 
-更新时间：2026-11-04 ｜ 当前阶段：S0 前置准备 ｜ 一句话现状：monorepo 骨架已跑通 spec §8 全部九项验收，前后端本地能连通，但业务页面为零——前端只有一个连通验证页，入口页与三段页还没动工。
+更新时间：2026-11-04 ｜ 当前阶段：数据管道已交付（S0 前置准备完成）｜ 一句话现状：管道代码按 spec v5 全部落地并跑通真实 opencode + flyai（discover / refresh / need 反问当场验过，93 tests 全绿）；卡点是 replan 真实单轮超过 300s 会被强杀重试，且三段页与入口页仍不存在。
 
-> 注：规则引用的总纲（§5/§7/§8）尚未入库，本账本暂以 `.qoder/spec/initial-framework-scaffolding-spec.md`、`docs/specs/2026-11-04-初始架构-design.md` 与 `docs/需求.md` 为口径来源，待总纲入库后改为引用。
+> 注：规则引用的总纲（§5/§7/§8）尚未入库，本账本暂以 `.qoder/spec/initial-framework-scaffolding-spec.md`、`docs/specs/2026-11-04-初始架构-design.md`、`docs/specs/2026-11-04-数据管道-design.md` 与 `docs/需求.md` 为口径来源，待总纲入库后改为引用。
 
 ## 本次做什么
 
-1. 按 spec 搭 pnpm monorepo 骨架（logger / shared / typescript-config / admin / web）。完成标准：根目录 `pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test` 四条命令全绿。
-2. 过 spec §8 九项验收。完成标准：九项每一项都有当场可复现的命令或断言，不含"大概"。
-3. 把本次对 spec 的 5 处偏移回写 spec，并沉淀设计文档与术语表。完成标准：`docs/specs/2026-11-04-初始架构-design.md` 与 `CONTEXT.md` 存在，spec 内不再残留 `@guard-work` 与登录壳描述。
+| 项 | 状态 | 完成标准 |
+|---|---|---|
+| 按 spec v4 用 TDD 实现数据管道（契约守卫 / 三道闸门 / 执行器 / 状态机 / 快照与接口 / 验证面板） | 已完成 | spec §10 七条验收逐条有验证记录；根目录 `pnpm test` / `pnpm typecheck` / `pnpm lint` 全绿 |
+| 把实测校正回写 spec（v4 → v5） | 已完成 | §0.3 实测表、决策 7 超时、§2 `input.json`、§3 `notes` 与 cheapest-days、§4 入参、§5 四条实测修正、§8 落点、§9 测试数、§10 验收表、§12 风险，全部与代码一致，无「待实测」项 |
+| replan 真实链路单独验收 | 阻塞 | 一次真实 replan 在单轮超时内 done，且 `candidates` ≤3 条真实班次；否则按类型放宽超时并回写 spec |
 
 ## 已完成
 
 | 项 | 状态 | 落地位置 | 验证方式 |
 |---|---|---|---|
-| pnpm monorepo 骨架（apps/admin NestJS 12 + TypeORM 1 + SQLite、apps/web Vite 8 + React 19 + RR8 + Tailwind 4、packages/{logger,shared,typescript-config}） | 已完成 | `apps/`、`packages/`、`pnpm-workspace.yaml`、`biome.json`、根 `package.json` | 根目录 `pnpm build`（5 包 Done）、`pnpm typecheck`（4 包 Done）、`pnpm lint`（53 files，0 error）、`pnpm test`（14 tests passed）；`pnpm why vitest` 四包均可达；`grep -cE "^\s*(jest\|ts-jest)[-/]" pnpm-lock.yaml` 为 0。环境约定：`apps/admin/.env` 由 `.env.example` 副本生成，`data/`、`logs/`、`secrets.env` 已 gitignore |
-| spec §8 九项运行时验收 | 已完成 | `apps/admin/test/health.e2e.spec.ts`、`apps/admin/src/infra/*` | #2 移走 `.env` 启动 → exit=1 且报「NODE_ENV 必填」；#3 `curl :3001/api/health` → 200 `{status:"ok"}`；#4 e2e 建临时库写入读回 + `apps/admin/data/flypig.sqlite` 自动创建；#5 带 `x-trace-id: verify-2026` 的响应头回同值且 `apps/admin/logs/admin.log` 命中 1 条；#6 `curl :3001/api/nope` → `{statusCode,message,error,path,timestamp}`；#7 `:3001/api/docs-json` info.title=`@flypig/admin`；#8 vite 代理 → `GET /api/health` 200（验证期间 5173 被仓外进程占过一次，落在 5174；该进程已不在，现在固定 5173）；#9 SIGINT 后进程干净退出 |
-| 全链路 traceId + pino JSONL 落盘 | 已完成 | `packages/logger/src/{context,serializers,logger}.ts`、`apps/admin/src/infra/http/trace.middleware.ts`、`apps/admin/src/infra/logger/app-logger.service.ts` | e2e 断言响应头与日志同一 traceId；文件通道为 sync 写入（避免退出时 flush 崩溃） |
-| Nest DI 约定：admin 关闭 `style/useImportType` | 已完成 | `biome.json` overrides | 曾把 `AppLoggerService` 改成 `import type` 导致 decorator metadata 退化为 `[Function]`、DI 崩溃；现在 `grep design:paramtypes apps/admin/dist/app.controller.js` 可见真实类引用 |
-| web 连通验证页 + 统一请求层 + 设计令牌 | 已完成 | `apps/web/src/pages/home.tsx`、`apps/web/src/lib/{api.ts,utils.ts}`、`apps/web/src/index.css` | `pnpm dev` 起前后端，首页显示后端 status/uptime；`apiFetch` 4 条单测通过（前缀、空 body、错误归一 + traceId、网络失败）。注意：`pnpm build` 与 `pnpm dev` 同时跑会抢 dist（nest-cli `deleteOutDir`），dev 期间不要并发 build |
-| 设计文档与术语表 | 已完成 | `docs/specs/2026-11-04-初始架构-design.md`、`CONTEXT.md` | 两份文件存在；设计文档含 8 节 + 对 spec 的偏移表 |
-| 对 spec 的 5 处偏移回写 | 已完成 | `.qoder/spec/initial-framework-scaffolding-spec.md` | §3.1 pnpm 11.13.0、§3.3 admin 纳入 biome、§6.2/6.3 删除登录壳与 401 跳转、§8 #8 改为代理连通、全文包名改 `@flypig/*` 与 `data/flypig.sqlite` |
+| 数据契约与手写守卫（前后端同源，不引 zod） | 已完成 | `packages/shared/src/dataset.ts`、`packages/shared/src/dataset.test.ts` | 18 tests：`parseDataset` 拒缺 `meta` / `series` 非数组 / `price` 为字符串，错误带字段路径；`parseOffers` / `parsePlan`（候选 >3 拒）/ `isNeedQuestion` 覆盖 |
+| 三道闸门（结构 / 完整 / 有据） | 已完成 | `apps/admin/src/modules/agent/agent.gate.ts`、`apps/admin/test/fixtures/{raw/flight.json,raw/flight-live.json,offers.from-raw.json}` | 14 tests，fixture 用 2026-11-04 真实录制的 flyai stdout：价格改 `1` → 「有 1 个价格在原始输出里找不到」；缺 11-08 → 写明缺哪天；host 非 `router.feizhu.com` → 拒；raw 为空 → 全拒；`meta.updated_at` / `mode` 后端覆盖（真实 raw 含「体验模式」→ trial，另一份 fixture → live） |
+| AgentRunner 接缝 + opencode 执行器 | 已完成 | `apps/admin/src/modules/agent/{agent.runner.ts,opencode.runner.ts,agent.tokens.ts}` | 12 tests：执行目录形状（`raw/`、只读 skill 副本、`opencode.json` 的 model 与 permission、`input.json`）、skill hash 篡改可检出、成功即删 / 失败保留、7 天清理、PATH 里 `flyai` 可执行、缺 `BAILIAN_API_KEY` 直接给失败原因；`RUN_TIMEOUT_MS = 300_000` 由测试锁住 |
+| 三类任务提示词 | 已完成 | `apps/admin/src/modules/agent/prompts/{common,discover,refresh,replan}.ts` | 12 tests：公共纪律（raw / 不许编造 / 反问出口）、refresh 写明 5 天逐天各查一次、重试带上轮失败原因、只给班次号时标注「未提供」并要求交 `need` |
+| job 状态机与管道编排 | 已完成 | `apps/admin/src/modules/jobs/{job.registry.ts,jobs.service.ts}` | 9 + 17 tests：同类型在跑复用 jobId、终态后是新 job、不交产物重试一轮、闸门拒或 runner 抛错时旧快照不动、skill 被改写判失败、成功即删执行目录 |
+| 快照存储与 6 条接口 | 已完成 | `apps/admin/src/modules/dataset/{dataset.entity.ts,dataset.service.ts,dataset.controller.ts,dataset.seed.ts}`、`apps/admin/src/modules/jobs/jobs.controller.ts` | e2e：空库 `GET /api/dataset` 回种子；`POST /api/dataset/refresh|discover|replan` 202 + jobId；`POST /api/watch` 200 只写骨架；`GET /api/cheapest-days` 命中缓存不起任务；`GET /api/jobs/:id`；replan 情况超 200 字 → 400 |
+| 真实链路实测（opencode + flyai） | 已完成 | spec §0.3；运行方式 `BAILIAN_API_KEY=… node dist/main.js` | discover 约 50s 出 10 条真实班次并过闸门；refresh 单轮 175s 出 5 天逐天真最低价（450/350/260/250/220）+ `push_log` 5 条 + `notes` 自陈放弃打码火车价；只给 `MU5101` 7s 回 `need` 反问；阶段文案在 11-06/11-07/11-08/11-10 间跳 |
+| 临时验证面板 | 已完成 | `apps/web/src/pages/home.tsx` | 浏览器打开 `localhost:5173/`：显示来源（体验模式标注）、示例数据标记、盯的班次、更新时间、5 天价格、discover 表单（含「班次号（可只填这个）」）、replan 输入框 |
+| flyai 作为仓库依赖落地 | 已完成 | `apps/admin/package.json`（`@fly-ai/flyai-cli@1.0.16`）、`pnpm-lock.yaml` | `apps/admin/node_modules/.bin/flyai --help` 可执行；真实 job 由 `agentEnv()` 前置该目录后取到真价 |
+| 装配与测试基建调整 | 已完成 | `apps/admin/src/app.bootstrap.ts`（抽出 `configureApp`）、`apps/admin/src/app.module.ts`、`apps/admin/vitest.config.mts` 未改、`biome.json`（`unsafeParameterDecoratorsEnabled` + 排除 `test/fixtures` 与 `.opencode`） | `pnpm build` 4 包 Done；`pnpm typecheck` 6 包 Done；`pnpm lint` 78 files 0 诊断；`pnpm test` 93 tests 全绿（shared 18 / admin 68 / web 4 / logger 3） |
+| 官方 flyai skill 入库 | 已完成 | `.opencode/skills/flyai/SKILL.md`（逐字节复制，MIT） | 真实 job 里 agent 加载该 skill 并靠 `flyai --help` 自探参数跑通；正文是 flyai-cli 仓库 README，无参数表（已记进 spec §5 与 §12） |
+| spec v5 与术语表同步 | 已完成 | `docs/specs/2026-11-04-数据管道-design.md`、`CONTEXT.md` | spec 242 行、12 节与代码一致；§10 验收表逐条标注验证方式；术语表新增「任务输入」并改写「执行目录」「刷新任务」 |
 
 ## 接下来做什么
 
-1. 【阻塞项：无｜归属：入口页】入口页原样还原（视觉事实源 `docs/入口页面，这个要原样实现.jpg`，页面内容按编造数据设计）。完成后把 `apps/web` 的连通验证页换成真实首页。
-2. 【阻塞项：入口页｜归属：/save 三段页】按 `.impeccable/surfaces/web-src-routes-save.md` 与 `docs/原型/功能页-三段页（已选）.png` 实现三段页：三段切换 + 三段各自输入 + 目标价虚线进度 + 推送记录。
-3. 【阻塞项：无｜归属：数据管道】出「示例数据 · 一键更新」的数据 spec：数据形态、存放位置（SQLite 表 vs JSON）、opencode CLI 怎么被调用。现在 SQLite 零实体、`synchronize: true` 是骨架期口径，实体一旦定型就要切 migration。
-4. 【阻塞项：无｜口径】三个遗留口径待用户定：三段页与入口页底部 tab 的合并方式；省心段「情况输入」是否可组合（带娃 + 生病）；一键更新是全部刷新还是只刷当前段。
-5. 【阻塞项：总纲入库｜口径】补建总纲与 §5 口径表，把账本引用的 D1–D4 / S0–S6 / R1–R13 编号对齐。
+1. 【阻塞项：无｜归属：/save 三段页】按 `.impeccable/surfaces/web-src-routes-save.md` 与 `docs/原型/功能页-三段页（已选）.png` 实现三段页：省钱/省心走 `GET /api/dataset`，省时间走 `GET /api/cheapest-days`，用户设定存 localStorage。数据源与接口已就绪，曲线是未来 5 天（无历史价数据源），原型的 4 天历史轴需调整。
+2. 【阻塞项：无｜归属：数据管道】replan 按类型给超时或压缩查询次数：实测 replan 单轮 >300s 触发强杀重试，而 spec 决策 7 原写 30–120s。完成标准：一次真实 replan 在单轮内 done 且候选 ≤3 条，spec 决策 7 与 §12 同步实测值。
+3. 【阻塞项：无｜归属：口径】`BAILIAN_API_KEY` 的正式注入方式：当前是我从 `~/.bailian/config.json` 临时传给进程环境，未写进 `apps/admin/.env`（该文件已 gitignore）。完成标准：部署 spec 里写明 key 来源与缺失时的行为（直接 failed，不重试）。
+4. 【阻塞项：无｜归属：口径】注入 `FLYAI_API_KEY` 后重跑酒店/门票/火车，确认打码是否消失。当前体验模式下 replan 的火车候选必然为空（agent 已在 `notes` 里交代）。
+5. 【阻塞项：无｜归属：入口页】入口页原样还原（视觉事实源 `docs/入口页面，这个要原样实现.jpg`），替换临时验证面板。
+6. 【阻塞项：无｜归属：部署】在 ECS 上装并验证 `flyai` 与 `opencode`（两者都能出结果），否则线上刷新与重规划必然 failed。
+7. 【阻塞项：总纲入库｜归属：口径】补建总纲与 §5 口径表，把账本引用的 D1–D4 / S0–S6 / R1–R13 编号对齐。

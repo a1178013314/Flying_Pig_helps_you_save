@@ -14,7 +14,9 @@
       "!**/dist",
       "!**/coverage",
       "!**/data",
-      "!**/logs"
+      "!**/logs",
+      "!**/.opencode",
+      "!**/test/fixtures"
     ]
   },
   "formatter": {
@@ -27,6 +29,9 @@
     "formatter": {
       "quoteStyle": "double",
       "semicolons": "always"
+    },
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
     }
   },
   "css": {

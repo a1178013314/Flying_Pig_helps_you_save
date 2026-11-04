@@ -21,11 +21,9 @@ function readPackage(): { name: string; version: string } {
   }
 }
 
-/** main.ts 与 e2e 共用同一装配，保证测的就是生产行为。 */
-export async function bootstrapApp(): Promise<INestApplication> {
+/** 全局装配：前缀、校验、异常结构、Swagger —— e2e 与生产共用同一份配置。 */
+export function configureApp(app: INestApplication): INestApplication {
   const logger = getAppLogger();
-  const app = await NestFactory.create(AppModule, { logger });
-
   app.setGlobalPrefix("api");
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter(logger));
@@ -36,12 +34,20 @@ export async function bootstrapApp(): Promise<INestApplication> {
     new DocumentBuilder()
       .setTitle(pkg.name)
       .setVersion(pkg.version)
-      .setDescription("飞猪帮你省 · 后端骨架（当前只有探针）")
+      .setDescription("飞猪帮你省 · 数据管道与快照接口")
       .build(),
   );
   SwaggerModule.setup("api/docs", app, document);
 
   app.enableShutdownHooks();
+  return app;
+}
+
+/** main.ts 与 e2e 共用同一装配，保证测的就是生产行为。 */
+export async function bootstrapApp(): Promise<INestApplication> {
+  const logger = getAppLogger();
+  const app = await NestFactory.create(AppModule, { logger });
+  configureApp(app);
   logger.info("admin 装配完成", { docs: "/api/docs" });
   return app;
 }
