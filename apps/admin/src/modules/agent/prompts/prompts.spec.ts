@@ -82,6 +82,11 @@ describe("refresh 提示词", () => {
     }
   });
 
+  it("5 天查询互相独立，要求一次并发发起而不是排队等", () => {
+    const prompt = buildRefreshPrompt(base);
+    expect(prompt).toContain("并发");
+  });
+
   it("要求省心段候选", () => {
     expect(buildRefreshPrompt(base)).toContain("interruption");
   });

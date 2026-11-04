@@ -38,6 +38,16 @@ describe("执行目录", () => {
     rmSync(jobDir, { recursive: true, force: true });
   });
 
+  it("opencode.json 关掉深度思考（实测同一提示词 2448ms/33 reasoning token → 1145ms/0）", () => {
+    prepareJobDir(jobDir, {});
+    const config = JSON.parse(readFileSync(join(jobDir, "opencode.json"), "utf8")) as {
+      provider: { bailian: { models: Record<string, { options?: Record<string, unknown> }> } };
+    };
+    expect(config.provider.bailian.models["qwen3.8-flash"]?.options).toEqual({
+      enable_thinking: false,
+    });
+  });
+
   it("建出 raw/、skill 副本与 opencode.json", () => {
     prepareJobDir(jobDir, { type: "discover", task: { origin: "北京" } });
     expect(existsSync(join(jobDir, "raw"))).toBe(true);

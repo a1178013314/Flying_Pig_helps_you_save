@@ -25,6 +25,7 @@ export function buildRefreshPrompt(watch: WatchInput, previousError?: string): s
     `要做三件事：`,
     `1. 查 ${watch.transport_no} 在 ${watch.date} 的当日报价，作为 watch.offers 里的那一条；`,
     `2. 查这条航线未来 5 天（${dates.join("、")}）的最低价。区间查询不会按天覆盖，必须逐天各查一次，共 5 次，每天单独存一份原始输出；`,
+    `这 5 次查询互不依赖，请在同一次 shell 调用里并发发起（后台跑完再一起等），别一条条排队等；替代候选的查询同理，能并发的就并发。`,
     `3. 给省心段查替代候选：同航线当天其他班次、次日班次、火车，挑最有说服力的写进 interruption.candidates。`,
     `上一轮快照在 input.json 的 previous 字段里：把它的 interruption.flight 与 interruption.reason 原样抄进产物，watch 的 origin/destination/date/transport_no/target_price 按上面给的值写，push_log 一律写成空数组（变动由后端自己记）。`,
     rules("dataset.json"),

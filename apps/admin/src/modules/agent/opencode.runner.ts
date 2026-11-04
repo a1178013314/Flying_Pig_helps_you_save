@@ -42,7 +42,13 @@ export function buildOpencodeConfig(): Record<string, unknown> {
           baseURL: "https://maas.qianwenaiapi.com/compatible-mode/v1",
           apiKey: "{env:BAILIAN_API_KEY}",
         },
-        models: { "qwen3.8-flash": { name: "Qwen3.8 Flash" } },
+        models: {
+          "qwen3.8-flash": {
+            name: "Qwen3.8 Flash",
+            // 实测透传进兼容端点请求体：同一提示词 reasoning 33→0 token、2448ms→1145ms
+            options: { enable_thinking: false },
+          },
+        },
       },
     },
     permission: {
