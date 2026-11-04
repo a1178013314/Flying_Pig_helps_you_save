@@ -33,7 +33,7 @@
 
 1. 【阻塞项：无｜归属：/save 三段页】按 `.impeccable/surfaces/web-src-routes-save.md` 与 `docs/原型/功能页-三段页（已选）.png` 实现三段页：省钱/省心走 `GET /api/dataset`，省时间走 `GET /api/cheapest-days`，用户设定存 localStorage。数据源与接口已就绪，曲线是未来 5 天（无历史价数据源），原型的 4 天历史轴需调整。
 2. 【阻塞项：无｜归属：数据管道】replan 按类型给超时或压缩查询次数：实测 replan 单轮 >300s 触发强杀重试。完成标准：一次真实 replan 在单轮内 done 且候选 ≤3 条。
-3. 【阻塞项：无｜归属：数据管道】refresh 提速：单次 flyai 10–20s × 8–10 次调用是上限，关思考与叫它并发都无效（208s→217s）。可选杠杆是按 `(航线, 日期)` 缓存当天最低价、无 `FLYAI_API_KEY` 时不查火车、或把 5 天拆成 5 个并行 job。完成标准：真实 refresh 稳定进 120s 内。
+3. 【阻塞项：无｜归属：数据管道】refresh 提速（瓶颈已量清：flyai 单次 0.6s、每轮模型往返 1.4s 且重发 ~10k token，200s 全花在轮次上）。按性价比做三件事：提示词给死命令模板把 5 天压进一次并发 shell、SKILL.md 瘦身去掉对 agent 无用的 README 段落、后端按 `(航线, 日期)` 缓存当天最低价只补缺失天。完成标准：真实 refresh 稳定进 120s 内，且闸门与 raw 佐证仍全过。
 3. 【阻塞项：无｜归属：口径】`BAILIAN_API_KEY` 的正式注入方式：当前是我从 `~/.bailian/config.json` 临时传给进程环境，未写进 `apps/admin/.env`（该文件已 gitignore）。完成标准：部署 spec 里写明 key 来源与缺失时的行为（直接 failed，不重试）。
 4. 【阻塞项：无｜归属：口径】注入 `FLYAI_API_KEY` 后重跑酒店/门票/火车，确认打码是否消失。当前体验模式下 replan 的火车候选必然为空（agent 已在 `notes` 里交代）。
 5. 【阻塞项：无｜归属：入口页】入口页原样还原（视觉事实源 `docs/入口页面，这个要原样实现.jpg`），替换临时验证面板。
