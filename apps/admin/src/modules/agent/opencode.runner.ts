@@ -18,8 +18,6 @@ import type { AgentRunner, AgentRunRequest } from "./agent.runner";
 /** 执行目录与产物协议（spec §2、§5） */
 
 export const AGENT_ROOT = join(tmpdir(), "flypig-agent");
-/** 2026-11-04 实测：refresh 单轮 175s（5 天逐天查 + 候选），spec 原写的 180s 只差 5s */
-export const RUN_TIMEOUT_MS = 300_000;
 
 const SKILL_SOURCE = join(process.cwd(), "../../.opencode/skills/flyai/SKILL.md");
 const SKILL_IN_JOB = join(".opencode", "skills", "flyai", "SKILL.md");
@@ -75,8 +73,8 @@ function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-/** 建沙箱：raw/、只读 skill 副本、opencode.json、input.json；返回 skill 副本的 hash */
-export function prepareJobDir(jobDir: string, input: unknown): string {
+/** 建沙箱：raw/、只读 skill 副本、opencode.json、input.json（有脚本则写可执行的 run-queries.sh）；返回 skill 副本的 hash */
+export function prepareJobDir(jobDir: string, input: unknown, script?: string): string {
   mkdirSync(join(jobDir, "raw"), { recursive: true });
 
   const skillPath = join(jobDir, SKILL_IN_JOB);
@@ -86,6 +84,11 @@ export function prepareJobDir(jobDir: string, input: unknown): string {
 
   writeFileSync(join(jobDir, "opencode.json"), JSON.stringify(buildOpencodeConfig()));
   writeFileSync(join(jobDir, "input.json"), JSON.stringify(input));
+  if (script) {
+    const scriptPath = join(jobDir, "run-queries.sh");
+    writeFileSync(scriptPath, script);
+    chmodSync(scriptPath, 0o755);
+  }
   return sha256(skillPath);
 }
 
@@ -136,14 +139,14 @@ export function stageFromOutput(text: string): string {
 }
 
 export class OpencodeRunner implements AgentRunner {
-  constructor(private readonly opts: { bin?: string; timeoutMs?: number } = {}) {}
+  constructor(private readonly opts: { bin?: string } = {}) {}
 
   async run(req: AgentRunRequest): Promise<void> {
     const missing = missingApiKey();
     if (missing) throw new Error(missing);
 
     const bin = this.opts.bin ?? "opencode";
-    const timeoutMs = this.opts.timeoutMs ?? RUN_TIMEOUT_MS;
+    const timeoutMs = req.timeoutMs;
 
     await new Promise<void>((resolve, reject) => {
       const child = spawn(bin, ["run", "--dir", req.jobDir, "--auto", req.prompt], {

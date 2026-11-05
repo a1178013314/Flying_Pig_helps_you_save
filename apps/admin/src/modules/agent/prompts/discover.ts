@@ -1,4 +1,4 @@
-import { OFFER_SHAPE, rules } from "./common";
+import { OFFER_SHAPE, retryNote, rules } from "./common";
 
 /** 用户可能只给班次号或给不全航线（决策 12：让它反问，不硬报错） */
 export interface DiscoverInput {
@@ -25,8 +25,8 @@ function gapNote(input: DiscoverInput): string {
   return `用户没说明：${gaps.join("、")}。缺这些就别猜，把 offers.json 整体写成 need 反问。`;
 }
 
-/** 列班次：查指定航线指定日期的直飞班次，价格升序取前 10（spec §7） */
-export function buildDiscoverPrompt(input: DiscoverInput): string {
+/** 列班次：查指定航线指定日期的直飞班次，价格升序取前 10（spec §4.3、§7） */
+export function buildDiscoverPrompt(input: DiscoverInput, previousError?: string): string {
   const or = (value: string | undefined): string => (value?.trim() ? value : "未提供");
   return [
     `任务：查 ${or(input.origin)} 到 ${or(input.destination)} 在 ${or(input.date)} 的航班班次。`,
@@ -36,6 +36,7 @@ export function buildDiscoverPrompt(input: DiscoverInput): string {
     rules("offers.json"),
     `offers.json 的内容是一个 JSON 数组，每一项是一个 offer。${OFFER_SHAPE}。`,
     `起飞或到达时刻用 "YYYY-MM-DD HH:mm:ss"；时间间隔换算成分钟。`,
+    retryNote(previousError),
   ]
     .filter(Boolean)
     .join("\n");

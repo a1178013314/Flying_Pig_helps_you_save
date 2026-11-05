@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import type { Dataset } from "@flypig/shared";
+import type { Dataset, InterruptionFlight } from "@flypig/shared";
 import type { OnModuleInit } from "@nestjs/common";
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { type GateKind, runGates } from "../agent/agent.gate";
@@ -15,11 +15,16 @@ import {
 import { buildDiscoverPrompt, type DiscoverInput } from "../agent/prompts/discover";
 import { buildRefreshPrompt } from "../agent/prompts/refresh";
 import { buildReplanPrompt } from "../agent/prompts/replan";
+import { buildScript, planRefresh, planReplan, type QueryPlan } from "../agent/query.script";
 import { DatasetService } from "../dataset/dataset.service";
 import { type Job, JobRegistry, type JobType } from "./job.registry";
 
-/** 一次任务最多两轮：第二轮带上上一轮的失败原因（决策 6、11） */
-const MAX_ATTEMPTS = 2;
+/** 单轮预算（spec §2 口径表）：discover 重试一次，refresh / replan 失败即 failed */
+const BUDGET: Record<JobType, { timeoutMs: number; attempts: number }> = {
+  discover: { timeoutMs: 90_000, attempts: 2 },
+  refresh: { timeoutMs: 150_000, attempts: 1 },
+  replan: { timeoutMs: 120_000, attempts: 1 },
+};
 /** 同航线结果缓存 10 分钟（spec §3） */
 const DAY_CACHE_MS = 600_000;
 
@@ -36,7 +41,7 @@ export interface DaysResult {
 type Task =
   | { kind: "discover"; input: DiscoverInput }
   | { kind: "refresh" }
-  | { kind: "replan"; input: { situation: string } };
+  | { kind: "replan"; input: { situation: string; flight?: InterruptionFlight } };
 
 @Injectable()
 export class JobsService implements OnModuleInit {
@@ -69,8 +74,8 @@ export class JobsService implements OnModuleInit {
     return this.kick("refresh", { kind: "refresh" });
   }
 
-  replan(situation: string): Job {
-    return this.kick("replan", { kind: "replan", input: { situation } });
+  replan(situation: string, flight?: InterruptionFlight): Job {
+    return this.kick("replan", { kind: "replan", input: { situation, flight } });
   }
 
   /** 同类型已有未结束任务时复用它，返回同一 jobId（决策 18） */
@@ -104,20 +109,37 @@ export class JobsService implements OnModuleInit {
   private async execute(job: Job, task: Task): Promise<void> {
     this.registry.markRunning(job.id);
     const jobDir = jobDirPath(this.jobRoot, job.id);
-    const previous = await this.dataset.current();
+    const snapshot = await this.dataset.current();
+    // 带了 flight 就整块覆盖快照里的被打断行程（spec §6），input.json / 脚本 / 提示词都吃这一份
+    const previous =
+      task.kind === "replan" && task.input.flight
+        ? {
+            ...snapshot,
+            interruption: { ...snapshot.interruption, flight: task.input.flight },
+          }
+        : snapshot;
+    // 体验模式下火车价打码，没 key 就不查
+    const train = Boolean(process.env.FLYAI_API_KEY?.trim());
+    const budget = BUDGET[job.type];
     let lastError = "未知错误";
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= budget.attempts; attempt += 1) {
       rmSync(jobDir, { recursive: true, force: true });
-      const input = { type: job.type, task: taskFor(job.type, task, previous), previous };
-      const prompt = promptFor(job.type, task, previous, attempt === 1 ? undefined : lastError);
-      const skillHash = prepareJobDir(jobDir, input);
+      const input = {
+        type: job.type,
+        task: task.kind === "refresh" ? previous.watch : task.input,
+        previous,
+      };
 
       try {
+        // 拼脚本可能报错（参数白名单），必须在 try 里：否则失败的 job 会变成未处理异常把进程打挂
+        const prepared = prepare(task, previous, train);
+        const skillHash = prepareJobDir(jobDir, input, prepared.script);
         await this.runner.run({
           jobId: job.id,
           jobDir,
-          prompt,
+          prompt: prepared.prompt(attempt === 1 ? undefined : lastError),
+          timeoutMs: budget.timeoutMs,
           onStage: (stage) => this.registry.setStage(job.id, stage),
         });
         if (!skillIntact(jobDir, skillHash))
@@ -152,17 +174,22 @@ export class JobsService implements OnModuleInit {
   }
 }
 
-function taskFor(type: JobType, task: Task, previous: Dataset): unknown {
-  if (type === "refresh") return previous.watch;
-  return task.kind === "refresh" ? undefined : task.input;
-}
-
-function promptFor(type: JobType, task: Task, previous: Dataset, previousError?: string): string {
-  if (type === "discover") {
-    return buildDiscoverPrompt(task.kind === "discover" ? task.input : previous.watch);
+/** 三类任务各交一份「脚本 + 提示词」：查询计划只有一份，文件名不会在两处漂移 */
+function prepare(
+  task: Task,
+  previous: Dataset,
+  train: boolean,
+): { script?: string; prompt: (previousError?: string) => string } {
+  if (task.kind === "discover") {
+    return { prompt: (previousError?: string) => buildDiscoverPrompt(task.input, previousError) };
   }
-  if (type === "replan") {
-    return buildReplanPrompt(task.kind === "replan" ? task.input.situation : "", previousError);
-  }
-  return buildRefreshPrompt(previous.watch, previousError);
+  const plan: QueryPlan =
+    task.kind === "refresh"
+      ? planRefresh(previous.watch, train)
+      : planReplan(previous.interruption.flight, train);
+  const prompt =
+    task.kind === "refresh"
+      ? (previousError?: string) => buildRefreshPrompt(previous.watch, plan, previousError)
+      : (previousError?: string) => buildReplanPrompt(task.input.situation, plan, previousError);
+  return { script: buildScript(plan), prompt };
 }

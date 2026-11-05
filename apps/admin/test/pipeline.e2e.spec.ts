@@ -21,9 +21,11 @@ class FakeRunner implements AgentRunner {
   hang = false;
   release: Promise<void> | null = null;
   calls = 0;
+  timeouts: number[] = [];
 
   async run(req: AgentRunRequest): Promise<void> {
     this.calls += 1;
+    this.timeouts.push(req.timeoutMs);
     if (this.mode === "throw") throw new Error("模型服务不可达");
     if (this.hang && this.release) await this.release;
 
@@ -124,6 +126,7 @@ describe("数据管道", () => {
     runner.hang = false;
     runner.release = null;
     runner.calls = 0;
+    runner.timeouts = [];
     runner.run = originalRun as FakeRunner["run"];
     // 每条用例都从种子快照开始（决策 16）
     await ds.query("DELETE FROM snapshot");
@@ -189,28 +192,48 @@ describe("数据管道", () => {
     expect((await getDataset()).meta.source).toBe("seed");
   });
 
-  it("不交产物时重试一次，两次都失败才判 failed", async () => {
+  it("refresh 失败即 failed，不重试（spec §2）", async () => {
     runner.run = async () => {
       runner.calls += 1;
     };
     const created = await request(app.getHttpServer()).post("/api/dataset/refresh");
     const job = await waitJob((created.body as { jobId: string }).jobId);
     expect(job.status).toBe("failed");
-    expect(runner.calls).toBe(2);
+    expect(runner.calls).toBe(1);
     expect(String(job.error)).toContain("dataset.json");
   });
 
-  it("重试的提示词带上上一轮失败原因（决策 11）", async () => {
+  it("超时按类型分档：discover 90s / refresh 150s / replan 120s", async () => {
+    for (const [path, timeoutMs] of [
+      ["/api/discover", 90_000],
+      ["/api/dataset/refresh", 150_000],
+      ["/api/replan", 120_000],
+    ] as const) {
+      runner.timeouts = [];
+      const res = await request(app.getHttpServer())
+        .post(path)
+        .send(path === "/api/replan" ? { situation: "航班取消了" } : {});
+      await waitJob((res.body as { jobId: string }).jobId);
+      expect(new Set(runner.timeouts)).toEqual(new Set([timeoutMs]));
+    }
+  });
+
+  it("重试只留给 discover，且提示词带上上一轮失败原因（决策 11）", async () => {
     const seen: string[] = [];
     runner.run = async (req: AgentRunRequest) => {
+      runner.calls += 1;
       seen.push(req.prompt);
-      if (seen.length === 1) return;
-      await originalRun.call(runner, req);
+      if (seen.length === 1) throw new Error("缺 origin");
+      copyFileSync(join(fixtureDir, "raw/flight.json"), join(req.jobDir, "raw/flight.json"));
+      copyFileSync(join(fixtureDir, "offers.from-raw.json"), join(req.jobDir, "offers.json"));
     };
-    const created = await request(app.getHttpServer()).post("/api/dataset/refresh");
+    const created = await request(app.getHttpServer())
+      .post("/api/discover")
+      .send({ origin: "北京", destination: "上海", date: "2026-11-06" });
     expect((await waitJob((created.body as { jobId: string }).jobId)).status).toBe("done");
     expect(seen).toHaveLength(2);
     expect(seen[1]).toContain("上一轮失败原因");
+    expect(seen[1]).toContain("缺 origin");
   });
 
   it("skill 被改写时判失败（spec §5 实测修正）", async () => {
@@ -278,6 +301,63 @@ describe("数据管道", () => {
     expect(job.status).toBe("done");
     expect((job.result as { summary: string }).summary).toBe("建议改乘 MU5186");
     expect((await getDataset()).meta.source).toBe("seed");
+  });
+
+  it("replan 带 flight 时脚本与 input.json 都被覆盖（spec §6）", async () => {
+    let script = "";
+    let previousFlight: unknown;
+    runner.run = async (req: AgentRunRequest) => {
+      script = readFileSync(join(req.jobDir, "run-queries.sh"), "utf8");
+      const input = JSON.parse(readFileSync(join(req.jobDir, "input.json"), "utf8")) as {
+        previous: Dataset;
+      };
+      previousFlight = input.previous.interruption.flight;
+      copyFileSync(join(fixtureDir, "raw/flight.json"), join(req.jobDir, "raw/flight.json"));
+      writeFileSync(
+        join(req.jobDir, "plan.json"),
+        JSON.stringify({ summary: "改乘 CA1831", candidates: [] }),
+      );
+    };
+    const flight = {
+      transport_no: "CA1831",
+      origin: "北京",
+      destination: "广州",
+      date: "2026-11-08",
+      dep_time: "2026-11-08 09:00:00",
+    };
+    const created = await request(app.getHttpServer())
+      .post("/api/replan")
+      .send({ situation: "改签到广州", flight })
+      .expect(202);
+    expect((await waitJob((created.body as { jobId: string }).jobId)).status).toBe("done");
+    expect(previousFlight).toEqual(flight);
+    expect(script).toContain("--origin '北京' --destination '广州'");
+    expect(script).toContain("--dep-date 2026-11-08");
+    expect(script).toContain("--dep-date 2026-11-09");
+    expect(script).not.toContain("watched-");
+  });
+
+  it("replan 的 flight 缺字段拒 400（5 个全给或都不给）", async () => {
+    await request(app.getHttpServer())
+      .post("/api/replan")
+      .send({ situation: "改签", flight: { transport_no: "CA1831" } })
+      .expect(400);
+  });
+
+  it("盯的航线里有 shell 元字符时 job failed，不把进程带崩（spec §3.3）", async () => {
+    await request(app.getHttpServer())
+      .post("/api/watch")
+      .send({
+        origin: '"; rm -rf /tmp/flypig-agent',
+        destination: "上海",
+        date: "2026-11-06",
+        transport_no: "MF8561",
+      })
+      .expect(200);
+    const created = await request(app.getHttpServer()).post("/api/dataset/refresh").expect(202);
+    const job = await waitJob((created.body as { jobId: string }).jobId);
+    expect(job.status).toBe("failed");
+    expect(String(job.error)).toContain("origin");
   });
 
   it("replan 情况超 200 字拒 400", async () => {

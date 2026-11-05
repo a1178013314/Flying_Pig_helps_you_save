@@ -1,7 +1,8 @@
-import type { Dataset } from "@flypig/shared";
+import type { Dataset, InterruptionFlight } from "@flypig/shared";
 import { Body, Controller, Get, HttpCode, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
-import { IsNotEmpty, IsOptional, IsString, Length } from "class-validator";
+import { Type } from "class-transformer";
+import { IsNotEmpty, IsOptional, IsString, Length, ValidateNested } from "class-validator";
 import type { DiscoverInput } from "../agent/prompts/discover";
 import { type DaysResult, JobsService } from "../jobs/jobs.service";
 import { DatasetService } from "./dataset.service";
@@ -45,10 +46,38 @@ class WatchDto {
   target_price = 0;
 }
 
+/** 形状复用 InterruptionFlight：给了就 5 个字段全给，缺一个即 400（spec §6） */
+class FlightDto implements InterruptionFlight {
+  @IsString()
+  @IsNotEmpty()
+  transport_no: string;
+
+  @IsString()
+  @IsNotEmpty()
+  origin: string;
+
+  @IsString()
+  @IsNotEmpty()
+  destination: string;
+
+  @IsString()
+  @IsNotEmpty()
+  date: string;
+
+  @IsString()
+  @IsNotEmpty()
+  dep_time: string;
+}
+
 class ReplanDto {
   @IsString()
   @Length(1, 200)
   situation: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FlightDto)
+  flight?: FlightDto;
 }
 
 class DaysQuery {
@@ -107,6 +136,6 @@ export class DatasetController {
   @HttpCode(202)
   @ApiOperation({ summary: "行程被打断：起一次 replan 任务" })
   replan(@Body() body: ReplanDto): { jobId: string } {
-    return { jobId: this.jobs.replan(body.situation).id };
+    return { jobId: this.jobs.replan(body.situation, body.flight).id };
   }
 }

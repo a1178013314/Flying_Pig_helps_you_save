@@ -17,7 +17,6 @@ import {
   missingApiKey,
   prepareJobDir,
   pruneStaleJobDirs,
-  RUN_TIMEOUT_MS,
   releaseJobDir,
   skillIntact,
   stageFromOutput,
@@ -99,6 +98,17 @@ describe("执行目录", () => {
     expect(skillIntact(jobDir, expected)).toBe(false);
   });
 
+  it("有脚本时写成可执行的 run-queries.sh，没有就不写", () => {
+    prepareJobDir(jobDir, {}, "#!/bin/sh\nwait\n");
+    const script = join(jobDir, "run-queries.sh");
+    expect(statSync(script).mode & 0o111).toBe(0o111);
+    expect(readFileSync(script, "utf8")).toBe("#!/bin/sh\nwait\n");
+
+    rmSync(jobDir, { recursive: true, force: true });
+    prepareJobDir(jobDir, {});
+    expect(existsSync(join(jobDir, "run-queries.sh"))).toBe(false);
+  });
+
   it("跑完即删；失败的目录留着排查", () => {
     prepareJobDir(jobDir, {});
     releaseJobDir(jobDir, "success");
@@ -125,12 +135,6 @@ describe("执行目录", () => {
     expect(existsSync(jobDir)).toBe(false);
     expect(existsSync(fresh)).toBe(true);
     rmSync(fresh, { recursive: true, force: true });
-  });
-});
-
-describe("运行超时", () => {
-  it("按实测放到 300s：refresh 单轮实测 175s，180s 会差 5s 被强杀", () => {
-    expect(RUN_TIMEOUT_MS).toBe(300_000);
   });
 });
 

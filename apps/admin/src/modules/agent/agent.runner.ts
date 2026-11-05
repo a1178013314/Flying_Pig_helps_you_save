@@ -7,6 +7,8 @@ export interface AgentRunRequest {
   /** 一次性沙箱目录，已由 prepareJobDir 建好 */
   jobDir: string;
   prompt: string;
+  /** 单轮预算，按任务类型给（spec §2 口径表），runner 不自己定 */
+  timeoutMs: number;
   /** 给人看的一句话，取不到就别调 */
   onStage(stage: string): void;
 }
